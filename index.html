@@ -41,6 +41,16 @@
   .dot.live{background:var(--ok); animation:pulse 1.4s ease-in-out infinite}
   .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .banner{
+    flex:none; display:flex; align-items:center; gap:10px;
+    padding:11px 14px; background:rgba(255,180,84,.12);
+    border-bottom:1px solid rgba(255,180,84,.3);
+  }
+  .banner-t{flex:1; font-size:12.5px; line-height:1.45; color:var(--fg)}
+  .banner-b{
+    flex:none; background:var(--warn); color:#1a1206; border:none;
+    border-radius:9px; padding:9px 13px; font-size:13px; font-weight:650;
+  }
   .iconbtn{
     flex:none; background:var(--panel2); border:1px solid var(--line);
     border-radius:10px; width:38px; height:38px; font-size:17px; line-height:1;
@@ -152,10 +162,16 @@
   <button class="iconbtn" id="openSettings" aria-label="Settings">⚙</button>
 </header>
 
+<div class="banner" id="banner" hidden>
+  <div class="banner-t" id="bannerText"></div>
+  <button class="banner-b" id="bannerBtn">Turn on</button>
+</div>
+
 <main id="feed">
   <div class="empty" id="empty">
-    <p><b>Before the event</b><br>Open <b>Settings ⚙</b> and tap <b>Prepare offline translator</b> while you still have good Wi-Fi. The model downloads once, then works without a signal.</p>
+    <p><b>Before the event</b><br>Check the banner above. On a phone, Chrome cannot translate offline — that is a desktop-only feature — so turn on online translation to see English.</p>
     <p>At the event, tap <kbd>Start listening</kbd> and put the phone on the table, mic end pointing at the speaker.</p>
+    <p>The Cantonese transcript, Jyutping and glossary notes all work with no translator at all.</p>
   </div>
 </main>
 
@@ -559,12 +575,23 @@ function normalise(text) {
   return out;
 }
 
+let quotaHit = "";
+
 async function translateOnline(text) {
   const url = "https://api.mymemory.translated.net/get?langpair=zh-TW|en&q="
             + encodeURIComponent(text.slice(0, 480));
   const r = await fetch(url);
   if (!r.ok) throw new Error("http " + r.status);
   const j = await r.json();
+  // The free tier answers 200 with the quota message in the body, so a
+  // silent daily cut-off would otherwise look like ordinary failure.
+  const status = j && j.responseStatus;
+  const detail = String((j && j.responseDetails) || "");
+  if (String(status) !== "200" || /QUOTA|LIMIT/i.test(detail)) {
+    quotaHit = detail || ("status " + status);
+    updateBanner();
+    throw new Error("quota");
+  }
   const out = j && j.responseData && j.responseData.translatedText;
   if (!out) throw new Error("empty");
   return out;
@@ -586,6 +613,50 @@ async function translate(text) {
   throw new Error("no-engine");
 }
 
+/**
+ * The banner is the app's honest answer to "why is there no English?".
+ * Chrome's built-in translator is desktop-only, so on a phone the offline
+ * path can never come up and the only working route is the online one —
+ * which the user must choose, because it sends text off the device.
+ */
+function updateBanner() {
+  const b = $("banner");
+  if (quotaHit) {
+    b.hidden = false;
+    $("bannerText").textContent =
+      "The free translation service hit its daily limit. The Cantonese transcript, "
+      + "Jyutping and glossary keep working. " + quotaHit;
+    $("bannerBtn").hidden = true;
+    return;
+  }
+  if (engine.instance || state.fallback) { b.hidden = true; return; }
+  b.hidden = false;
+  $("bannerBtn").hidden = false;
+  $("bannerText").textContent = translatorAPI()
+    ? "No translator loaded yet — turn on online translation, or prepare the offline model in Settings."
+    : "This device can't translate offline (Chrome only offers that on desktop). Turn on online translation to see English.";
+}
+
+$("bannerBtn").onclick = () => {
+  const ok = confirm(
+    "Online translation sends the recognised Chinese text to MyMemory, a free public "
+    + "translation service. Only that text is sent — no audio, and nothing else.\n\n"
+    + "Turn it on?");
+  if (!ok) return;
+  state.fallback = true;
+  $("fallback").checked = true;
+  save();
+  updateBanner();
+  retryFailed();
+};
+
+/** Fill in lines that failed while there was no translator. */
+function retryFailed() {
+  for (const e of state.entries) {
+    if (e.status === "failed") { e.status = "pending"; renderEntry(e); enqueueTranslation(e); }
+  }
+}
+
 /* Serialise translation so lines land in the order they were spoken. */
 let chain = Promise.resolve();
 function enqueueTranslation(entry) {
@@ -596,7 +667,7 @@ function enqueueTranslation(entry) {
     } catch (_) {
       entry.en = engine.instance || state.fallback
         ? "Translation failed for this line."
-        : "No translator available — see Settings ⚙.";
+        : "— translation off —";
       entry.status = "failed";
     }
     renderEntry(entry);
@@ -909,7 +980,11 @@ $("lang").onchange = (e) => {
 };
 
 $("fallback").checked = state.fallback;
-$("fallback").onchange = (e) => { state.fallback = e.target.checked; save(); };
+$("fallback").onchange = (e) => {
+  state.fallback = e.target.checked; save();
+  updateBanner();
+  if (state.fallback) retryFailed();
+};
 
 $("showjp").checked = state.showjp;
 $("showjp").onchange = (e) => { state.showjp = e.target.checked; save(); redrawAll(); };
@@ -929,6 +1004,12 @@ $("size").oninput = (e) => {
 
 $("prep").onclick = async () => {
   const btn = $("prep"), bar = $("dlbar"), fill = $("dlfill");
+  if (!translatorAPI()) {
+    $("prepHint").textContent =
+      "Not available on this device. Chrome's built-in translator is desktop-only — "
+      + "it does not exist on phones or tablets. Use online translation above.";
+    return;
+  }
   btn.disabled = true; btn.textContent = "Preparing…";
   bar.hidden = false;
   const ok = await initTranslator((p) => { fill.style.width = Math.round(p * 100) + "%"; }, true);
@@ -940,6 +1021,8 @@ $("prep").onclick = async () => {
     : "No built-in translator on this device. Update Chrome to the latest version, "
       + "or turn on the online fallback above. The Cantonese transcript and the "
       + "glossary notes work either way.";
+  if (ok) retryFailed();
+  updateBanner();
   runDiagnostics();
 };
 
@@ -978,7 +1061,7 @@ async function runDiagnostics() {
   rows.push(`<b>Secure connection</b> · ${yn(isSecureContext, "yes", "no — mic will not work")}`);
   rows.push(`<b>Speech recognition</b> · ${yn(!!SR, "supported", "not supported — use Chrome")}`);
   const api = translatorAPI();
-  rows.push(`<b>Built-in translator</b> · ${yn(!!api, api ? api.kind : "", "not on this device")}`);
+  rows.push(`<b>Built-in translator</b> · ${yn(!!api, api ? api.kind : "", "no — desktop-only Chrome feature")}`);
   if (api) {
     const found = await pickSource(api, false);
     rows.push(`<b>Cantonese → English</b> · ${
@@ -1013,9 +1096,10 @@ async function runDiagnostics() {
     setStatus("Idle");
   }
 
+  updateBanner();
   // Reattach an already-downloaded model so a returning visit just works.
   // Never downloads here — that only happens when you tap Prepare.
-  initTranslator(null, false).then(runDiagnostics);
+  initTranslator(null, false).then(() => { runDiagnostics(); updateBanner(); });
 })();
 </script>
 </body>
