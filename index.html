@@ -352,10 +352,15 @@ function romanise(zh) {
   if (!jyut || !state.showjp) return "";
   try {
     const parts = [];
+    let latin = "";
+    // Keep runs of English together: "OK" must not come out as "O K".
+    const flush = () => { if (latin) { parts.push(latin); latin = ""; } };
     for (const [ch, jp] of jyut.getJyutpingList(zh)) {
-      if (jp) parts.push(jp);
-      else if (/[A-Za-z0-9]/.test(ch)) parts.push(ch.trim());
+      if (jp) { flush(); parts.push(jp); }
+      else if (/[A-Za-z0-9]/.test(ch)) latin += ch;
+      else flush();
     }
+    flush();
     return parts.join(" ").trim();
   } catch (_) { return ""; }
 }
