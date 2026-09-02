@@ -1,0 +1,798 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>Cantonese Live</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121924; --panel2:#182231; --line:#243244;
+    --fg:#e9eef5; --mut:#8ea0b8; --dim:#5f7288;
+    --accent:#4da3ff; --accent2:#7ee0c0; --warn:#ffb454; --bad:#ff6b6b; --ok:#4ade80;
+    --sz:112%;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans HK","PingFang HK","Microsoft JhengHei",sans-serif;
+    display:flex; flex-direction:column;
+    overscroll-behavior:none;
+  }
+  button,select,input,textarea{font:inherit;color:inherit}
+  button{cursor:pointer}
+
+  /* ---------- header ---------- */
+  header{
+    flex:none; display:flex; align-items:center; gap:10px;
+    padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;
+    background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  .brand{font-weight:650; letter-spacing:.2px; font-size:15px; white-space:nowrap}
+  .pill{
+    display:inline-flex; align-items:center; gap:6px; margin-left:auto;
+    font-size:12px; color:var(--mut); background:var(--panel2);
+    border:1px solid var(--line); border-radius:999px; padding:5px 10px;
+    max-width:52vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--dim);flex:none}
+  .dot.live{background:var(--ok); animation:pulse 1.4s ease-in-out infinite}
+  .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .iconbtn{
+    flex:none; background:var(--panel2); border:1px solid var(--line);
+    border-radius:10px; width:38px; height:38px; font-size:17px; line-height:1;
+  }
+
+  /* ---------- transcript ---------- */
+  main{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 14px 4px; font-size:var(--sz)}
+  .entry{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 14px; margin-bottom:10px;
+  }
+  .zh{font-size:.92em; color:var(--mut); line-height:1.55; word-break:break-word}
+  .en{font-size:1.12em; line-height:1.5; margin-top:7px; word-break:break-word}
+  .en.pending{color:var(--dim); font-style:italic}
+  .en.failed{color:var(--warn); font-style:italic; font-size:.95em}
+  .meta{display:flex; align-items:center; gap:8px; margin-top:8px; font-size:.7em; color:var(--dim)}
+  .meta button{
+    background:none; border:1px solid var(--line); color:var(--mut);
+    border-radius:8px; padding:3px 9px; font-size:11px;
+  }
+  .chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+  .chip{
+    font-size:11px; background:var(--panel2); border:1px solid var(--line);
+    border-radius:999px; padding:4px 9px; color:var(--accent2);
+  }
+  .chip b{color:var(--fg); font-weight:600}
+  .chip i{color:var(--mut); font-style:normal}
+  .note{
+    margin-top:9px; padding:10px 12px; border-left:3px solid var(--accent);
+    background:var(--panel2); border-radius:0 10px 10px 0;
+    font-size:.85em; line-height:1.55; color:var(--fg); white-space:pre-wrap;
+  }
+  .empty{color:var(--mut); text-align:center; padding:40px 20px; line-height:1.7; font-size:14px}
+  .empty kbd{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font:inherit}
+
+  /* ---------- interim + controls ---------- */
+  .interim{
+    flex:none; min-height:0; padding:0 14px;
+    color:var(--accent2); font-size:calc(var(--sz) * .92); line-height:1.5;
+  }
+  .interim:not(:empty){padding:10px 14px; border-top:1px solid var(--line); background:rgba(77,163,255,.05)}
+  footer{
+    flex:none; display:flex; align-items:center; gap:10px;
+    padding:10px 14px calc(env(safe-area-inset-bottom) + 10px);
+    background:var(--panel); border-top:1px solid var(--line);
+  }
+  .mic{
+    flex:1; height:52px; border:none; border-radius:14px; font-size:16px; font-weight:600;
+    background:var(--accent); color:#04121f;
+  }
+  .mic.on{background:var(--bad); color:#fff}
+  .mic:disabled{background:var(--panel2); color:var(--dim)}
+
+  /* ---------- sheet ---------- */
+  .scrim{position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:9}
+  .sheet{
+    position:fixed; inset:auto 0 0 0; z-index:10; max-height:88vh; overflow-y:auto;
+    background:var(--panel); border-top:1px solid var(--line);
+    border-radius:18px 18px 0 0; padding:16px 16px calc(env(safe-area-inset-bottom) + 20px);
+  }
+  .sheet h2{margin:2px 0 14px; font-size:16px}
+  .grip{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
+  .row{margin-bottom:16px}
+  .row > label{display:block; font-size:12px; color:var(--mut); margin-bottom:6px}
+  .hint{font-size:11px; color:var(--dim); line-height:1.5; margin-top:6px}
+  select,input[type=text],textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--line);
+    border-radius:10px; padding:10px 12px; font-size:14px;
+  }
+  textarea{resize:vertical; min-height:70px; line-height:1.5}
+  input[type=range]{width:100%; accent-color:var(--accent)}
+  .toggle{display:flex; align-items:flex-start; gap:10px; font-size:13px; line-height:1.5}
+  .toggle input{margin-top:2px; width:18px; height:18px; accent-color:var(--accent); flex:none}
+  .btn{
+    background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+    padding:11px 14px; font-size:14px; width:100%; text-align:center;
+  }
+  .btn.primary{background:var(--accent); color:#04121f; border-color:transparent; font-weight:600}
+  .btn.danger{color:var(--bad)}
+  .btnrow{display:flex; gap:8px}
+  .diag{font-size:12px; line-height:1.9; color:var(--mut); background:var(--panel2);
+        border:1px solid var(--line); border-radius:10px; padding:10px 12px}
+  .diag b{color:var(--fg); font-weight:600}
+  .diag .y{color:var(--ok)} .diag .n{color:var(--bad)} .diag .m{color:var(--warn)}
+  .bar{height:6px; background:var(--panel2); border-radius:3px; overflow:hidden; margin-top:8px}
+  .bar > i{display:block; height:100%; width:0; background:var(--accent); transition:width .2s}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="brand">🎧 Cantonese Live</span>
+  <span class="pill"><span class="dot" id="dot"></span><span id="status">Idle</span></span>
+  <button class="iconbtn" id="openSettings" aria-label="Settings">⚙</button>
+</header>
+
+<main id="feed">
+  <div class="empty" id="empty">
+    <p><b>Before the event</b><br>Open <b>Settings ⚙</b> and tap <b>Prepare offline translator</b> while you still have good Wi-Fi. The model downloads once, then works without a signal.</p>
+    <p>At the event, tap <kbd>Start listening</kbd> and put the phone on the table, mic end pointing at the speaker.</p>
+  </div>
+</main>
+
+<div class="interim" id="interim"></div>
+
+<footer>
+  <button class="mic" id="mic">Start listening</button>
+  <button class="iconbtn" id="clear" aria-label="Clear transcript">🗑</button>
+</footer>
+
+<div class="scrim" id="scrim" hidden></div>
+<section class="sheet" id="sheet" hidden>
+  <div class="grip"></div>
+  <h2>Settings</h2>
+
+  <div class="row">
+    <label for="ctx">What is this event? (helps the notes)</label>
+    <textarea id="ctx" placeholder="e.g. Hong Kong district council town hall on housing policy. Speakers: Chairman Lau, a surveyor, residents asking questions."></textarea>
+    <div class="hint">Used only on this phone, to explain names, jargon and references you hear.</div>
+  </div>
+
+  <div class="row">
+    <label for="lang">Speech recognition language</label>
+    <select id="lang">
+      <option value="yue-Hant-HK">Cantonese — Hong Kong (yue-Hant-HK)</option>
+      <option value="zh-HK">Chinese — Hong Kong (zh-HK)</option>
+      <option value="zh-TW">Mandarin — Taiwan (zh-TW)</option>
+      <option value="zh-CN">Mandarin — Mainland (zh-CN)</option>
+    </select>
+    <div class="hint">If recognition produces nothing, try the second option — some Chrome builds only register one of the two.</div>
+  </div>
+
+  <div class="row">
+    <label>Offline translator model</label>
+    <button class="btn primary" id="prep">Prepare offline translator</button>
+    <div class="bar" id="dlbar" hidden><i id="dlfill"></i></div>
+    <div class="hint" id="prepHint">Downloads Chrome's on-device translation model. Free, private, works offline afterwards.</div>
+  </div>
+
+  <div class="row">
+    <label class="toggle">
+      <input type="checkbox" id="fallback">
+      <span>Use online fallback when the offline model is unavailable
+        <span class="hint" style="margin-top:4px">Sends the transcribed Chinese text to MyMemory, a free public translation service. Off by default — turn it on only if you're comfortable with what's said leaving the device.</span>
+      </span>
+    </label>
+  </div>
+
+  <div class="row">
+    <label for="size">Text size</label>
+    <input type="range" id="size" min="90" max="220" step="5">
+  </div>
+
+  <div class="row">
+    <label class="toggle">
+      <input type="checkbox" id="awake" checked>
+      <span>Keep the screen awake while listening</span>
+    </label>
+  </div>
+
+  <div class="row">
+    <label>This device supports</label>
+    <div class="diag" id="diag">checking…</div>
+  </div>
+
+  <div class="row btnrow">
+    <button class="btn" id="export">Export transcript</button>
+    <button class="btn danger" id="wipe">Clear all</button>
+  </div>
+
+  <button class="btn" id="closeSettings">Done</button>
+</section>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * State
+ * ------------------------------------------------------------------ */
+const LS = "cantonese-live/v1";
+const state = {
+  lang: "yue-Hant-HK",
+  size: 112,
+  awake: true,
+  fallback: false,
+  ctx: "",
+  entries: []          // {id, zh, en, status:'pending'|'ok'|'failed', note}
+};
+try { Object.assign(state, JSON.parse(localStorage.getItem(LS) || "{}")); } catch (_) {}
+
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(LS, JSON.stringify({
+        ...state, entries: state.entries.slice(-300)
+      }));
+    } catch (_) { /* quota or private mode — the app still works */ }
+  }, 400);
+}
+
+const $ = (id) => document.getElementById(id);
+const feed = $("feed"), interimEl = $("interim");
+
+/* ------------------------------------------------------------------ *
+ * Status pill
+ * ------------------------------------------------------------------ */
+function setStatus(text, kind) {
+  $("status").textContent = text;
+  $("dot").className = "dot" + (kind ? " " + kind : "");
+}
+
+/* ------------------------------------------------------------------ *
+ * Glossary — offline, no network, no model needed
+ * ------------------------------------------------------------------ */
+const GLOSSARY = [
+  ["唔該","m4 goi1","thanks / excuse me (asking for something)"],
+  ["多謝","do1 ze6","thank you (for a gift or compliment)"],
+  ["早晨","zou2 san4","good morning"],
+  ["你好","nei5 hou2","hello"],
+  ["各位","gok3 wai2","everyone (formal address to a room)"],
+  ["主席","zyu2 zik6","chairperson"],
+  ["董事","dung2 si6","board director"],
+  ["議員","ji5 jyun4","councillor / legislator"],
+  ["校長","haau6 zoeng2","principal / headteacher"],
+  ["牧師","muk6 si1","pastor"],
+  ["教授","gaau3 sau6","professor"],
+  ["先生","sin1 saang1","Mr / sir (also: teacher)"],
+  ["小姐","siu2 ze2","Ms / miss"],
+  ["會議","wui6 ji5","meeting"],
+  ["議程","ji5 cing4","agenda"],
+  ["動議","dung6 ji5","a motion (formally proposed)"],
+  ["附議","fu6 ji5","to second a motion"],
+  ["表決","biu2 kyut3","to put to a vote"],
+  ["贊成","zaan3 sing4","in favour"],
+  ["反對","faan2 deoi3","against / opposed"],
+  ["棄權","hei3 kyun4","abstain"],
+  ["通過","tung1 gwo3","passed / approved"],
+  ["法定人數","faat3 ding6 jan4 sou3","quorum"],
+  ["預算","jyu6 syun3","budget"],
+  ["報告","bou3 gou3","report"],
+  ["簡報","gaan2 bou3","briefing / presentation"],
+  ["提問","tai4 man6","to ask a question"],
+  ["補充","bou2 cung1","to add a supplementary point"],
+  ["跟進","gan1 zeon3","to follow up"],
+  ["落實","lok6 sat6","to finalise / put into effect"],
+  ["搞掂","gaau2 dim6","done, sorted (colloquial)"],
+  ["冇問題","mou5 man6 tai4","no problem"],
+  ["唔緊要","m4 gan2 jiu3","never mind, it's fine"],
+  ["唔好意思","m4 hou2 ji3 si1","sorry / excuse me"],
+  ["麻煩晒","maa4 faan4 saai3","thanks for going to the trouble"],
+  ["辛苦晒","san1 fu2 saai3","thanks for your hard work"],
+  ["飲茶","jam2 caa4","yum cha — often a social invitation, not literal"],
+  ["埋單","maai4 daan1","settle the bill"],
+  ["老細","lou5 sai3","boss"],
+  ["同事","tung4 si6","colleague"],
+  ["大佬","daai6 lou2","mate / big brother (informal)"],
+  ["得閒","dak1 haan4","free, having spare time"],
+  ["即係","zik1 hai6","that is to say / meaning"],
+  ["譬如","pei3 jyu4","for example"],
+  ["點解","dim2 gaai2","why"],
+  ["邊個","bin1 go3","who / which one"],
+  ["幾時","gei2 si4","when"],
+  ["咁樣","gam2 joeng2","like this / in that case"],
+  ["而家","ji4 gaa1","now"],
+  ["聽日","ting1 jat6","tomorrow"],
+  ["尋日","cam4 jat6","yesterday"],
+  ["下個禮拜","haa6 go3 lai5 baai3","next week"]
+].sort((a, b) => b[0].length - a[0].length);
+
+function scanGlossary(zh) {
+  const hits = [];
+  const used = [];
+  for (const [term, jyut, gloss] of GLOSSARY) {
+    const at = zh.indexOf(term);
+    if (at < 0) continue;
+    // skip a term already covered by a longer match at the same place
+    if (used.some(([s, e]) => at >= s && at < e)) continue;
+    used.push([at, at + term.length]);
+    hits.push({ term, jyut, gloss });
+    if (hits.length >= 4) break;
+  }
+  return hits;
+}
+
+/* ------------------------------------------------------------------ *
+ * Translation engines, tried in order
+ * ------------------------------------------------------------------ */
+const engine = { name: "none", instance: null, source: null };
+
+function translatorAPI() {
+  if (typeof self.Translator !== "undefined" && typeof self.Translator.create === "function") {
+    return {
+      kind: "Translator",
+      availability: (o) => typeof self.Translator.availability === "function"
+        ? self.Translator.availability(o) : Promise.resolve("available"),
+      create: (o) => self.Translator.create(o)
+    };
+  }
+  if (self.translation && typeof self.translation.createTranslator === "function") {
+    return {
+      kind: "self.translation",
+      availability: (o) => typeof self.translation.canTranslate === "function"
+        ? self.translation.canTranslate(o) : Promise.resolve("available"),
+      create: (o) => self.translation.createTranslator(o)
+    };
+  }
+  if (self.ai && self.ai.translator && typeof self.ai.translator.create === "function") {
+    return {
+      kind: "ai.translator",
+      availability: (o) => typeof self.ai.translator.capabilities === "function"
+        ? self.ai.translator.capabilities().then(() => "available") : Promise.resolve("available"),
+      create: (o) => self.ai.translator.create(o)
+    };
+  }
+  return null;
+}
+
+const SOURCE_CANDIDATES = ["yue", "zh-Hant", "zh"];
+const OK = new Set(["available", "readily", "downloadable", "downloading", "after-download"]);
+const READY = new Set(["available", "readily"]);
+
+/** Find a source language the built-in translator will accept. */
+async function pickSource(api, mustBeDownloaded) {
+  const accept = mustBeDownloaded ? READY : OK;
+  for (const src of SOURCE_CANDIDATES) {
+    try {
+      const a = await api.availability({ sourceLanguage: src, targetLanguage: "en" });
+      if (accept.has(String(a))) return { src, availability: String(a) };
+    } catch (_) { /* try the next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * Build the on-device translator. `onProgress` receives 0..1 during a
+ * model download. Resolves false when the device has no built-in translator.
+ * With `allowDownload` false this only reattaches a model already on the
+ * device — so opening the page never spends the user's mobile data.
+ */
+async function initTranslator(onProgress, allowDownload) {
+  const api = translatorAPI();
+  if (!api) return false;
+  const found = await pickSource(api, !allowDownload);
+  if (!found) return false;
+  try {
+    const opts = { sourceLanguage: found.src, targetLanguage: "en" };
+    if (onProgress) {
+      opts.monitor = (m) => m.addEventListener("downloadprogress", (e) => {
+        const p = typeof e.loaded === "number"
+          ? (e.total ? e.loaded / e.total : e.loaded) : 0;
+        onProgress(Math.max(0, Math.min(1, p)));
+      });
+    }
+    engine.instance = await api.create(opts);
+    engine.name = "on-device";
+    engine.source = found.src;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function translateOnline(text) {
+  const url = "https://api.mymemory.translated.net/get?langpair=zh-TW|en&q="
+            + encodeURIComponent(text.slice(0, 480));
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("http " + r.status);
+  const j = await r.json();
+  const out = j && j.responseData && j.responseData.translatedText;
+  if (!out) throw new Error("empty");
+  return out;
+}
+
+async function translate(text) {
+  if (engine.instance) {
+    try { return { text: await engine.instance.translate(text), via: "on-device" }; }
+    catch (_) { /* fall through to the online option */ }
+  }
+  if (state.fallback) {
+    return { text: await translateOnline(text), via: "online" };
+  }
+  throw new Error("no-engine");
+}
+
+/* Serialise translation so lines land in the order they were spoken. */
+let chain = Promise.resolve();
+function enqueueTranslation(entry) {
+  chain = chain.then(async () => {
+    try {
+      const { text } = await translate(entry.zh);
+      entry.en = text; entry.status = "ok";
+    } catch (_) {
+      entry.en = engine.instance || state.fallback
+        ? "Translation failed for this line."
+        : "No translator available — see Settings ⚙.";
+      entry.status = "failed";
+    }
+    renderEntry(entry);
+    save();
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Context notes via Chrome's built-in Prompt API (free, on-device)
+ * ------------------------------------------------------------------ */
+function languageModelAPI() {
+  if (typeof self.LanguageModel !== "undefined") return self.LanguageModel;
+  if (self.ai && self.ai.languageModel) return self.ai.languageModel;
+  return null;
+}
+
+let lmSession = null;
+async function explain(entry, button) {
+  const LM = languageModelAPI();
+  if (!LM) return;
+  button.disabled = true;
+  button.textContent = "Thinking…";
+  try {
+    if (!lmSession) lmSession = await LM.create();
+    const ctx = state.ctx ? `Setting: ${state.ctx}\n` : "";
+    const prompt =
+      `${ctx}A Cantonese speaker said: "${entry.zh}"\n` +
+      `English so far: "${entry.en || "(none)"}"\n\n` +
+      `In 2-3 short sentences, explain what this means in context: any idiom, ` +
+      `slang, indirectness, politeness level, or cultural reference a non-speaker would miss. ` +
+      `If it is plain and literal, say so in one line.`;
+    entry.note = await lmSession.prompt(prompt);
+  } catch (_) {
+    entry.note = "Could not generate a note on this device.";
+  }
+  renderEntry(entry);
+  save();
+}
+
+/* ------------------------------------------------------------------ *
+ * Rendering
+ * ------------------------------------------------------------------ */
+function nodeFor(entry) {
+  let el = document.getElementById(entry.id);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "entry";
+    el.id = entry.id;
+    feed.appendChild(el);
+    while (feed.querySelectorAll(".entry").length > 300) {
+      feed.querySelector(".entry").remove();
+    }
+  }
+  return el;
+}
+
+function renderEntry(entry) {
+  $("empty").hidden = true;
+  const el = nodeFor(entry);
+  const hits = scanGlossary(entry.zh);
+  const hasLM = !!languageModelAPI();
+
+  el.textContent = "";
+
+  const zh = document.createElement("div");
+  zh.className = "zh";
+  zh.textContent = entry.zh;
+  el.appendChild(zh);
+
+  const en = document.createElement("div");
+  en.className = "en" + (entry.status === "pending" ? " pending"
+                       : entry.status === "failed" ? " failed" : "");
+  en.textContent = entry.status === "pending" ? "translating…" : entry.en;
+  el.appendChild(en);
+
+  if (hits.length) {
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    for (const h of hits) {
+      const c = document.createElement("span");
+      c.className = "chip";
+      const b = document.createElement("b"); b.textContent = h.term;
+      const i = document.createElement("i"); i.textContent = ` ${h.jyut} — ${h.gloss}`;
+      c.append(b, i);
+      chips.appendChild(c);
+    }
+    el.appendChild(chips);
+  }
+
+  if (entry.note) {
+    const n = document.createElement("div");
+    n.className = "note";
+    n.textContent = entry.note;
+    el.appendChild(n);
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  const copy = document.createElement("button");
+  copy.textContent = "Copy";
+  copy.onclick = () => {
+    navigator.clipboard?.writeText(`${entry.zh}\n${entry.en}`);
+    copy.textContent = "Copied";
+    setTimeout(() => (copy.textContent = "Copy"), 1200);
+  };
+  meta.appendChild(copy);
+  if (hasLM && !entry.note) {
+    const ex = document.createElement("button");
+    ex.textContent = "Explain";
+    ex.onclick = () => explain(entry, ex);
+    meta.appendChild(ex);
+  }
+  el.appendChild(meta);
+
+  stickToBottom();
+}
+
+let pinned = true;
+feed.addEventListener("scroll", () => {
+  pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+});
+function stickToBottom() {
+  if (pinned) feed.scrollTop = feed.scrollHeight;
+}
+
+function commit(zh) {
+  const entry = { id: "e" + Date.now() + Math.random().toString(36).slice(2, 6),
+                  zh, en: "", status: "pending", note: "" };
+  state.entries.push(entry);
+  if (state.entries.length > 300) state.entries.shift();
+  renderEntry(entry);
+  enqueueTranslation(entry);
+}
+
+/* ------------------------------------------------------------------ *
+ * Speech recognition — with the restart loop Android Chrome needs
+ * ------------------------------------------------------------------ */
+const SR = self.SpeechRecognition || self.webkitSpeechRecognition;
+let rec = null, wantRunning = false, restartTimer = null, backoff = 0, fatal = "";
+
+function buildRecogniser() {
+  const r = new SR();
+  r.lang = state.lang;
+  r.continuous = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  r.onstart = () => { backoff = 0; setStatus("Listening", "live"); };
+
+  r.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      const txt = (res[0] && res[0].transcript || "").trim();
+      if (!txt) continue;
+      if (res.isFinal) commit(txt); else interim += txt;
+    }
+    interimEl.textContent = interim;
+    if (interim) stickToBottom();
+  };
+
+  r.onerror = (e) => {
+    const err = e.error;
+    if (err === "not-allowed" || err === "service-not-allowed") {
+      fatal = "Microphone blocked. Allow it in Chrome's site settings, then reload.";
+      stop();
+      setStatus("Mic blocked", "bad");
+    } else if (err === "audio-capture") {
+      fatal = "No microphone available on this device.";
+      stop();
+      setStatus("No mic", "bad");
+    } else if (err === "network") {
+      backoff = Math.min(backoff + 1, 5);
+      setStatus("Network trouble", "warn");
+    }
+    // 'no-speech' and 'aborted' are normal on Android: onend restarts us.
+  };
+
+  r.onend = () => {
+    interimEl.textContent = "";
+    if (!wantRunning) { setStatus("Stopped"); return; }
+    const delay = backoff ? Math.min(400 * 2 ** backoff, 6000) : 250;
+    setStatus(backoff ? "Reconnecting…" : "Listening", backoff ? "warn" : "live");
+    clearTimeout(restartTimer);
+    restartTimer = setTimeout(() => {
+      if (!wantRunning) return;
+      try { r.start(); } catch (_) { /* already starting; onend will fire again */ }
+    }, delay);
+  };
+
+  return r;
+}
+
+async function start() {
+  if (!SR) return;
+  if (fatal) { alert(fatal); return; }
+  wantRunning = true;
+  $("mic").classList.add("on");
+  $("mic").textContent = "Stop listening";
+  setStatus("Starting…", "warn");
+  await acquireWakeLock();
+  rec = buildRecogniser();
+  try { rec.start(); }
+  catch (_) { /* a stale instance is still closing; onend restarts */ }
+}
+
+function stop() {
+  wantRunning = false;
+  clearTimeout(restartTimer);
+  $("mic").classList.remove("on");
+  $("mic").textContent = "Start listening";
+  interimEl.textContent = "";
+  releaseWakeLock();
+  if (rec) { try { rec.stop(); } catch (_) {} }
+  setStatus("Stopped");
+}
+
+$("mic").onclick = () => (wantRunning ? stop() : start());
+
+/* ------------------------------------------------------------------ *
+ * Screen wake lock
+ * ------------------------------------------------------------------ */
+let wakeLock = null;
+async function acquireWakeLock() {
+  if (!state.awake || !navigator.wakeLock) return;
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
+}
+function releaseWakeLock() {
+  try { wakeLock && wakeLock.release(); } catch (_) {}
+  wakeLock = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && wantRunning) acquireWakeLock();
+});
+
+/* ------------------------------------------------------------------ *
+ * Settings sheet
+ * ------------------------------------------------------------------ */
+function openSheet() { $("sheet").hidden = false; $("scrim").hidden = false; runDiagnostics(); }
+function closeSheet() { $("sheet").hidden = true; $("scrim").hidden = true; }
+$("openSettings").onclick = openSheet;
+$("closeSettings").onclick = closeSheet;
+$("scrim").onclick = closeSheet;
+
+$("ctx").value = state.ctx;
+$("ctx").oninput = (e) => { state.ctx = e.target.value; save(); };
+
+$("lang").value = state.lang;
+$("lang").onchange = (e) => {
+  state.lang = e.target.value; save();
+  if (wantRunning) { stop(); setTimeout(start, 300); }
+};
+
+$("fallback").checked = state.fallback;
+$("fallback").onchange = (e) => { state.fallback = e.target.checked; save(); };
+
+$("awake").checked = state.awake;
+$("awake").onchange = (e) => {
+  state.awake = e.target.checked; save();
+  state.awake ? acquireWakeLock() : releaseWakeLock();
+};
+
+$("size").value = state.size;
+document.documentElement.style.setProperty("--sz", state.size + "%");
+$("size").oninput = (e) => {
+  state.size = +e.target.value; save();
+  document.documentElement.style.setProperty("--sz", state.size + "%");
+};
+
+$("prep").onclick = async () => {
+  const btn = $("prep"), bar = $("dlbar"), fill = $("dlfill");
+  btn.disabled = true; btn.textContent = "Preparing…";
+  bar.hidden = false;
+  const ok = await initTranslator((p) => { fill.style.width = Math.round(p * 100) + "%"; }, true);
+  bar.hidden = true;
+  btn.disabled = false;
+  btn.textContent = ok ? "Offline translator ready ✓" : "Prepare offline translator";
+  $("prepHint").textContent = ok
+    ? `Ready — translating ${engine.source} → en entirely on this device.`
+    : "This device has no built-in translator. Update Chrome, or turn on the online fallback above.";
+  runDiagnostics();
+};
+
+$("export").onclick = () => {
+  const body = state.entries
+    .map((e) => `${e.zh}\n${e.en}${e.note ? "\n  note: " + e.note : ""}`)
+    .join("\n\n");
+  const blob = new Blob([`Cantonese Live — ${new Date().toLocaleString()}\n\n${body}\n`],
+                        { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cantonese-transcript.txt";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+};
+
+function clearAll() {
+  state.entries = [];
+  feed.querySelectorAll(".entry").forEach((n) => n.remove());
+  $("empty").hidden = false;
+  save();
+}
+$("wipe").onclick = () => { if (confirm("Clear the whole transcript?")) { clearAll(); closeSheet(); } };
+$("clear").onclick = () => { if (confirm("Clear the transcript?")) clearAll(); };
+
+/* ------------------------------------------------------------------ *
+ * Diagnostics
+ * ------------------------------------------------------------------ */
+async function runDiagnostics() {
+  const rows = [];
+  const yn = (b, yes, no, warn) =>
+    b === true ? `<span class="y">${yes}</span>`
+    : b === "warn" ? `<span class="m">${warn}</span>`
+    : `<span class="n">${no}</span>`;
+
+  rows.push(`<b>Secure connection</b> · ${yn(isSecureContext, "yes", "no — mic will not work")}`);
+  rows.push(`<b>Speech recognition</b> · ${yn(!!SR, "supported", "not supported — use Chrome")}`);
+  const api = translatorAPI();
+  rows.push(`<b>Built-in translator</b> · ${yn(!!api, api ? api.kind : "", "not on this device")}`);
+  if (api) {
+    const found = await pickSource(api, false);
+    rows.push(`<b>Cantonese → English</b> · ${
+      found ? yn(true, `${found.src} (${found.availability})`) : yn(false, "", "no usable source language")}`);
+  }
+  rows.push(`<b>Loaded model</b> · ${engine.instance ? yn(true, "ready") : yn("warn", "", "", "not prepared yet")}`);
+  rows.push(`<b>Online fallback</b> · ${state.fallback ? yn("warn", "", "", "on") : yn(true, "off")}`);
+  rows.push(`<b>Context notes</b> · ${yn(!!languageModelAPI(), "available", "not on this device")}`);
+  rows.push(`<b>Keep screen awake</b> · ${yn(!!navigator.wakeLock, "supported", "not supported")}`);
+  $("diag").innerHTML = rows.join("<br>");
+}
+
+/* ------------------------------------------------------------------ *
+ * Boot
+ * ------------------------------------------------------------------ */
+(function boot() {
+  for (const e of state.entries) renderEntry(e);
+  if (state.entries.length) $("empty").hidden = true;
+
+  if (!SR) {
+    setStatus("Unsupported browser", "bad");
+    $("mic").disabled = true;
+    $("mic").textContent = "Open this in Chrome";
+  } else if (!isSecureContext) {
+    setStatus("Needs HTTPS", "bad");
+    $("mic").disabled = true;
+    $("mic").textContent = "Needs an https:// address";
+  } else {
+    setStatus("Idle");
+  }
+
+  // Reattach an already-downloaded model so a returning visit just works.
+  // Never downloads here — that only happens when you tap Prepare.
+  initTranslator(null, false).then(runDiagnostics);
+})();
+</script>
+</body>
+</html>
