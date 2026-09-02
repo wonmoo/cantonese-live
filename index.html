@@ -53,6 +53,13 @@
     padding:12px 14px; margin-bottom:10px;
   }
   .zh{font-size:.92em; color:var(--mut); line-height:1.55; word-break:break-word}
+  .jp{font-size:.72em; color:var(--dim); line-height:1.5; margin-top:4px;
+      word-break:break-word; letter-spacing:.2px}
+  .warnrow{
+    display:inline-flex; align-items:center; gap:6px; margin-top:8px;
+    font-size:.68em; color:var(--warn); background:rgba(255,180,84,.1);
+    border:1px solid rgba(255,180,84,.3); border-radius:8px; padding:3px 9px;
+  }
   .en{font-size:1.12em; line-height:1.5; margin-top:7px; word-break:break-word}
   .en.pending{color:var(--dim); font-style:italic}
   .en.failed{color:var(--warn); font-style:italic; font-size:.95em}
@@ -199,6 +206,15 @@
   </div>
 
   <div class="row">
+    <label class="toggle">
+      <input type="checkbox" id="showjp" checked>
+      <span>Show Jyutping romanisation under each line
+        <span class="hint" style="margin-top:4px">Lets you match what you hear to what is on screen, and read names back aloud.</span>
+      </span>
+    </label>
+  </div>
+
+  <div class="row">
     <label for="size">Text size</label>
     <input type="range" id="size" min="90" max="220" step="5">
   </div>
@@ -235,6 +251,7 @@ const state = {
   size: 112,
   awake: true,
   fallback: false,
+  showjp: true,
   ctx: "",
   entries: []          // {id, zh, en, status:'pending'|'ok'|'failed', note}
 };
@@ -320,6 +337,45 @@ const GLOSSARY = [
   ["尋日","cam4 jat6","yesterday"],
   ["下個禮拜","haa6 go3 lai5 baai3","next week"]
 ].sort((a, b) => b[0].length - a[0].length);
+
+/* ------------------------------------------------------------------ *
+ * Jyutping — CanCLID/to-jyutping (BSD-2-Clause), vendored so it keeps
+ * working with no signal. Loaded lazily; absence is not an error.
+ * ------------------------------------------------------------------ */
+let jyut = null;
+import("./vendor/to-jyutping.mjs")
+  .then((m) => { jyut = m; redrawAll(); runDiagnostics(); })
+  .catch(() => { /* romanisation simply stays off */ });
+
+/** Romanise a line, keeping embedded English and dropping punctuation. */
+function romanise(zh) {
+  if (!jyut || !state.showjp) return "";
+  try {
+    const parts = [];
+    for (const [ch, jp] of jyut.getJyutpingList(zh)) {
+      if (jp) parts.push(jp);
+      else if (/[A-Za-z0-9]/.test(ch)) parts.push(ch.trim());
+    }
+    return parts.join(" ").trim();
+  } catch (_) { return ""; }
+}
+
+/* ------------------------------------------------------------------ *
+ * Did recognition drift to Mandarin?
+ *
+ * The engine will happily return standard written Chinese if it decides
+ * the audio is Mandarin, and nothing on screen would say so. These two
+ * sets are disjoint in practice: the first only appears in written
+ * Cantonese, the second only in standard Chinese.
+ * ------------------------------------------------------------------ */
+const CANTO_CHARS = /[嘅哋佢係唔冇睇嚟咗喺啲乜嘢咁嗰呢咩喎嘞囉㗎搵攞畀掂晒俾唔]/g;
+const MANDA_CHARS = /[的是不沒這那什麼他們怎麼很呀嘛]/g;
+
+function looksMandarin(zh) {
+  const canto = (zh.match(CANTO_CHARS) || []).length;
+  const manda = (zh.match(MANDA_CHARS) || []).length;
+  return canto === 0 && manda >= 2;
+}
 
 function scanGlossary(zh) {
   const hits = [];
@@ -608,6 +664,14 @@ function renderEntry(entry) {
   zh.textContent = entry.zh;
   el.appendChild(zh);
 
+  const jp = romanise(entry.zh);
+  if (jp) {
+    const j = document.createElement("div");
+    j.className = "jp";
+    j.textContent = jp;
+    el.appendChild(j);
+  }
+
   const en = document.createElement("div");
   en.className = "en" + (entry.status === "pending" ? " pending"
                        : entry.status === "failed" ? " failed" : "");
@@ -626,6 +690,13 @@ function renderEntry(entry) {
       chips.appendChild(c);
     }
     el.appendChild(chips);
+  }
+
+  if (looksMandarin(entry.zh)) {
+    const w = document.createElement("div");
+    w.className = "warnrow";
+    w.textContent = "⚠ reads as Mandarin — recognition may have drifted";
+    el.appendChild(w);
   }
 
   if (entry.note) {
@@ -659,6 +730,12 @@ function renderEntry(entry) {
   el.appendChild(meta);
 
   stickToBottom();
+}
+
+/** Re-render every line — after the jyutping module lands, or a toggle. */
+function redrawAll() {
+  feed.querySelectorAll(".entry").forEach((n) => n.remove());
+  for (const e of state.entries) renderEntry(e);
 }
 
 let pinned = true;
@@ -829,6 +906,9 @@ $("lang").onchange = (e) => {
 $("fallback").checked = state.fallback;
 $("fallback").onchange = (e) => { state.fallback = e.target.checked; save(); };
 
+$("showjp").checked = state.showjp;
+$("showjp").onchange = (e) => { state.showjp = e.target.checked; save(); redrawAll(); };
+
 $("awake").checked = state.awake;
 $("awake").onchange = (e) => {
   state.awake = e.target.checked; save();
@@ -903,6 +983,7 @@ async function runDiagnostics() {
   }
   rows.push(`<b>Loaded model</b> · ${engine.instance ? yn(true, "ready") : yn("warn", "", "", "not prepared yet")}`);
   rows.push(`<b>Online fallback</b> · ${state.fallback ? yn("warn", "", "", "on") : yn(true, "off")}`);
+  rows.push(`<b>Jyutping</b> · ${yn(!!jyut, "loaded (offline)", "failed to load")}`);
   rows.push(`<b>Context notes</b> · ${yn(!!languageModelAPI(), "available", "not on this device")}`);
   rows.push(`<b>Keep screen awake</b> · ${yn(!!navigator.wakeLock, "supported", "not supported")}`);
   $("diag").innerHTML = rows.join("<br>");
