@@ -435,6 +435,49 @@ async function initTranslator(onProgress, allowDownload) {
   return false;
 }
 
+/**
+ * Rewrite written-Cantonese function words into standard written Chinese
+ * before handing text to a translator.
+ *
+ * Machine translation engines treat this text as standard Chinese and get
+ * the Cantonese-specific particles badly wrong. Measured against the raw
+ * text: 唔該晒 ("thank you very much") came back as "you shouldn't" — the
+ * negation 唔 swallowed the fixed phrase and inverted the sentence — and
+ * 聽日 ("tomorrow") came back as "Sunday". Normalising first fixes both.
+ *
+ * Order matters: every phrase containing 唔 must be rewritten before the
+ * bare 唔 → 不 rule can break it apart. Only the text sent to the engine is
+ * changed; what is shown on screen stays exactly as it was spoken.
+ */
+const NORMALISE = [
+  // fixed phrases first — these are the ones that invert or scramble
+  [/唔該晒/g, "非常感謝"], [/唔該/g, "謝謝"],
+  [/唔好意思/g, "不好意思"], [/唔緊要/g, "不要緊"],
+  [/唔使/g, "不用"], [/唔好/g, "不要"],
+  [/冇問題/g, "沒問題"], [/冇/g, "沒有"],
+  [/辛苦晒/g, "辛苦了"], [/麻煩晒/g, "麻煩你了"],
+  [/點解/g, "為什麼"], [/邊個/g, "誰"], [/邊度/g, "哪裡"],
+  [/幾時/g, "什麼時候"], [/乜嘢/g, "什麼"], [/咩/g, "什麼"],
+  [/呢個/g, "這個"], [/呢啲/g, "這些"], [/呢度/g, "這裡"], [/呢排/g, "最近"],
+  [/嗰個/g, "那個"], [/嗰啲/g, "那些"], [/嗰度/g, "那裡"],
+  [/而家/g, "現在"], [/聽日/g, "明天"], [/尋日/g, "昨天"], [/琴日/g, "昨天"],
+  [/禮拜/g, "星期"], [/搞掂/g, "完成"], [/傾偈/g, "聊天"],
+  [/老細/g, "老闆"], [/埋單/g, "買單"],
+  // then single characters
+  [/嘅/g, "的"], [/哋/g, "們"], [/佢/g, "他"], [/係/g, "是"],
+  [/睇/g, "看"], [/喺/g, "在"], [/嚟/g, "來"], [/咗/g, "了"],
+  [/畀/g, "給"], [/攞/g, "拿"], [/嘢/g, "東西"], [/啲/g, "些"],
+  [/乜/g, "什麼"], [/咁/g, "這麼"], [/唔/g, "不"],
+  // sentence-final particles carry tone, not meaning — drop them
+  [/[㗎喇嘞囉喎吖嗱]/g, ""]
+];
+
+function normalise(text) {
+  let out = text;
+  for (const [re, to] of NORMALISE) out = out.replace(re, to);
+  return out;
+}
+
 async function translateOnline(text) {
   const url = "https://api.mymemory.translated.net/get?langpair=zh-TW|en&q="
             + encodeURIComponent(text.slice(0, 480));
@@ -447,13 +490,15 @@ async function translateOnline(text) {
 }
 
 async function translate(text) {
+  // Engines see standard written Chinese; the screen keeps the real Cantonese.
+  const src = normalise(text);
   if (engine.instance) {
     // Bounded: one wedged call must not stall every line behind it.
-    const out = await withTimeout(engine.instance.translate(text), 12000, null);
+    const out = await withTimeout(engine.instance.translate(src), 12000, null);
     if (out) return { text: out, via: "on-device" };
   }
   if (state.fallback) {
-    const out = await withTimeout(translateOnline(text), 10000, null);
+    const out = await withTimeout(translateOnline(src), 10000, null);
     if (out) return { text: out, via: "online" };
     throw new Error("failed");
   }
