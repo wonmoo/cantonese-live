@@ -91,6 +91,13 @@
     flex:1; height:52px; border:none; border-radius:14px; font-size:16px; font-weight:600;
     background:var(--accent); color:#04121f;
   }
+  .tolive{
+    position:fixed; left:50%; transform:translateX(-50%); z-index:5;
+    bottom:calc(env(safe-area-inset-bottom) + 82px);
+    background:var(--accent); color:#04121f; border:none; border-radius:999px;
+    padding:9px 18px; font-size:13px; font-weight:650;
+    box-shadow:0 4px 16px rgba(0,0,0,.45);
+  }
   .mic.on{background:var(--bad); color:#fff}
   .mic:disabled{background:var(--panel2); color:var(--dim)}
 
@@ -151,6 +158,7 @@
   <button class="mic" id="mic">Start listening</button>
   <button class="iconbtn" id="clear" aria-label="Clear transcript">🗑</button>
 </footer>
+<button class="tolive" id="tolive" hidden>↓ Live</button>
 
 <div class="scrim" id="scrim" hidden></div>
 <section class="sheet" id="sheet" hidden>
@@ -629,6 +637,11 @@ function renderEntry(entry) {
 
   const meta = document.createElement("div");
   meta.className = "meta";
+  if (entry.t) {
+    const time = document.createElement("span");
+    time.textContent = new Date(entry.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    meta.appendChild(time);
+  }
   const copy = document.createElement("button");
   copy.textContent = "Copy";
   copy.onclick = () => {
@@ -651,14 +664,20 @@ function renderEntry(entry) {
 let pinned = true;
 feed.addEventListener("scroll", () => {
   pinned = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80;
+  $("tolive").hidden = pinned;
 });
 function stickToBottom() {
   if (pinned) feed.scrollTop = feed.scrollHeight;
 }
+$("tolive").onclick = () => {
+  pinned = true;
+  $("tolive").hidden = true;
+  feed.scrollTop = feed.scrollHeight;
+};
 
 function commit(zh) {
   const entry = { id: "e" + Date.now() + Math.random().toString(36).slice(2, 6),
-                  zh, en: "", status: "pending", note: "" };
+                  t: Date.now(), zh, en: "", status: "pending", note: "" };
   state.entries.push(entry);
   if (state.entries.length > 300) state.entries.shift();
   renderEntry(entry);
@@ -670,6 +689,25 @@ function commit(zh) {
  * ------------------------------------------------------------------ */
 const SR = self.SpeechRecognition || self.webkitSpeechRecognition;
 let rec = null, wantRunning = false, restartTimer = null, backoff = 0, fatal = "";
+
+// Words recognised but not yet marked final. Android ends recognition at
+// every pause, so without this they would be thrown away on each restart.
+let pendingInterim = "";
+
+/**
+ * Restart after the engine ends, which on Android is constantly.
+ * start() throws if the previous session has not finished closing, and
+ * that throw used to strand the app: no further onend would fire, so it
+ * sat showing "Listening" while deaf. Retry with a widening delay instead.
+ */
+function scheduleRestart(delay) {
+  clearTimeout(restartTimer);
+  restartTimer = setTimeout(() => {
+    if (!wantRunning || !rec) return;
+    try { rec.start(); }
+    catch (_) { scheduleRestart(Math.min(delay * 2 || 200, 3000)); }
+  }, delay);
+}
 
 function buildRecogniser() {
   const r = new SR();
@@ -688,6 +726,9 @@ function buildRecogniser() {
       if (!txt) continue;
       if (res.isFinal) commit(txt); else interim += txt;
     }
+    // Finalised text leaves the interim stream, so whatever is left here
+    // is genuinely uncommitted and safe to keep for onend.
+    pendingInterim = interim;
     interimEl.textContent = interim;
     if (interim) stickToBottom();
   };
@@ -710,15 +751,15 @@ function buildRecogniser() {
   };
 
   r.onend = () => {
+    // Keep what was heard. This is the difference between a transcript with
+    // holes in it and one without: every pause ends the session, and the
+    // words in flight at that moment are only ever interim.
+    if (pendingInterim.trim()) { commit(pendingInterim.trim()); pendingInterim = ""; }
     interimEl.textContent = "";
     if (!wantRunning) { setStatus("Stopped"); return; }
-    const delay = backoff ? Math.min(400 * 2 ** backoff, 6000) : 250;
     setStatus(backoff ? "Reconnecting…" : "Listening", backoff ? "warn" : "live");
-    clearTimeout(restartTimer);
-    restartTimer = setTimeout(() => {
-      if (!wantRunning) return;
-      try { r.start(); } catch (_) { /* already starting; onend will fire again */ }
-    }, delay);
+    // The gap between sessions is deaf time, so keep it short when healthy.
+    scheduleRestart(backoff ? Math.min(400 * 2 ** backoff, 6000) : 120);
   };
 
   return r;
@@ -728,6 +769,7 @@ async function start() {
   if (!SR) return;
   if (fatal) { alert(fatal); return; }
   wantRunning = true;
+  pendingInterim = "";
   $("mic").classList.add("on");
   $("mic").textContent = "Stop listening";
   setStatus("Starting…", "warn");
