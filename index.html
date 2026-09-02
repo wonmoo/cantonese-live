@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f14">
 <title>Cantonese Live</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎧</text></svg>">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <style>
   :root{
     --bg:#0b0f14; --panel:#121924; --panel2:#182231; --line:#243244;
@@ -169,9 +171,9 @@
 
 <main id="feed">
   <div class="empty" id="empty">
-    <p><b>Before the event</b><br>Check the banner above. On a phone, Chrome cannot translate offline — that is a desktop-only feature — so turn on online translation to see English.</p>
-    <p>At the event, tap <kbd>Start listening</kbd> and put the phone on the table, mic end pointing at the speaker.</p>
-    <p>The Cantonese transcript, Jyutping and glossary notes all work with no translator at all.</p>
+    <p><b>Before the event</b><br>Open this once on Wi-Fi so it caches, then use Chrome's menu → <b>Add to Home screen</b>. Put the phone on <b>silent</b>: Android plays a beep each time recognition restarts, which is at every pause.</p>
+    <p><b>At the event</b><br>Tap <kbd>Start listening</kbd> and lay the phone on the table, mic end towards the speaker. The first time, it asks once whether to allow online translation — English needs a signal; the transcript does not.</p>
+    <p>The Cantonese transcript, Jyutping and glossary notes work with no translator and no signal.</p>
   </div>
 </main>
 
@@ -188,7 +190,7 @@
   <div class="grip"></div>
   <h2>Settings</h2>
 
-  <div class="row">
+  <div class="row" id="ctxRow">
     <label for="ctx">What is this event? (helps the notes)</label>
     <textarea id="ctx" placeholder="e.g. Hong Kong district council town hall on housing policy. Speakers: Chairman Lau, a surveyor, residents asking questions."></textarea>
     <div class="hint">Used only on this phone, to explain names, jargon and references you hear.</div>
@@ -205,8 +207,8 @@
     <div class="hint">If recognition produces nothing, try the second option — some Chrome builds only register one of the two.</div>
   </div>
 
-  <div class="row">
-    <label>Offline translator model</label>
+  <div class="row" id="offlineRow">
+    <label>Offline translator model (desktop Chrome only)</label>
     <button class="btn primary" id="prep">Prepare offline translator</button>
     <div class="bar" id="dlbar" hidden><i id="dlfill"></i></div>
     <div class="hint" id="prepHint">Downloads Chrome's on-device translation model. Free, private, works offline afterwards.</div>
@@ -215,8 +217,8 @@
   <div class="row">
     <label class="toggle">
       <input type="checkbox" id="fallback">
-      <span>Use online fallback when the offline model is unavailable
-        <span class="hint" style="margin-top:4px">Sends the transcribed Chinese text to MyMemory, a free public translation service. Off by default — turn it on only if you're comfortable with what's said leaving the device.</span>
+      <span>Online translation
+        <span class="hint" style="margin-top:4px">Sends each recognised line of Chinese text — never audio — to Google Translate's public web endpoint, which understands Cantonese natively. If that fails, MyMemory is tried. Both are free and need a signal. On a phone this is the only route to English.</span>
       </span>
     </label>
   </div>
@@ -267,6 +269,7 @@ const state = {
   size: 112,
   awake: true,
   fallback: false,
+  onlineDeclined: false,   // asked once at Start and said no; the banner stays as the way back
   showjp: true,
   ctx: "",
   entries: []          // {id, zh, en, status:'pending'|'ok'|'failed', note}
@@ -351,8 +354,113 @@ const GLOSSARY = [
   ["而家","ji4 gaa1","now"],
   ["聽日","ting1 jat6","tomorrow"],
   ["尋日","cam4 jat6","yesterday"],
-  ["下個禮拜","haa6 go3 lai5 baai3","next week"]
-].sort((a, b) => b[0].length - a[0].length);
+  ["下個禮拜","haa6 go3 lai5 baai3","next week"],
+  // Two-field entries get their Jyutping from to-jyutping at render time.
+  // -- greetings and courtesies --
+  ["唔使客氣","you're welcome / no need to be polite"],
+  ["唔好客氣","don't stand on ceremony"],
+  ["好耐冇見","long time no see"],
+  ["食咗飯未","have you eaten? — a greeting, not a real question"],
+  ["有心","kind of you to think of it (thanks for the thought)"],
+  ["打擾晒","sorry to have disturbed you"],
+  ["失禮","pardon me / excuse my manners"],
+  ["麻煩你","could you please… (asking a favour)"],
+  ["恭喜","congratulations"],
+  ["加油","keep going / good luck (encouragement)"],
+  ["再見","goodbye"],
+  ["拜拜","bye"],
+  ["走先","I'm off / leaving now"],
+  // -- meetings, organisations, money --
+  ["週年大會","annual general meeting (AGM)"],
+  ["開會","to hold a meeting"],
+  ["散會","meeting adjourned"],
+  ["小休","short break"],
+  ["休息","break / rest"],
+  ["投票","to vote"],
+  ["一致通過","passed unanimously"],
+  ["修訂","amendment"],
+  ["撤回","to withdraw (a motion)"],
+  ["押後","to postpone / adjourn"],
+  ["委員會","committee"],
+  ["秘書","secretary"],
+  ["司庫","treasurer"],
+  ["幹事","officer (of an organisation)"],
+  ["會員","member"],
+  ["選舉","election"],
+  ["候選人","candidate"],
+  ["提名","to nominate"],
+  ["連任","re-elected / serving another term"],
+  ["財政","finance / financial"],
+  ["帳目","the accounts"],
+  ["賬目","the accounts"],
+  ["核數","audit"],
+  ["撥款","funding / appropriation"],
+  ["申請","to apply / application"],
+  ["批准","to approve"],
+  ["合約","contract"],
+  ["報價","quotation (price)"],
+  ["招標","to call for tenders"],
+  ["承辦商","contractor"],
+  ["維修","repair / maintenance"],
+  ["保養","upkeep / maintenance"],
+  // -- Hong Kong civic vocabulary --
+  ["業主","property owner"],
+  ["法團","owners' corporation (building management body)"],
+  ["管理費","management fee"],
+  ["屋邨","public housing estate"],
+  ["街坊","neighbours / local residents"],
+  ["義工","volunteer"],
+  ["長者","the elderly"],
+  ["區議會","District Council"],
+  ["立法會","Legislative Council"],
+  ["政府","government"],
+  ["房署","Housing Department"],
+  ["社署","Social Welfare Department"],
+  // -- discourse: how a point is being framed --
+  ["即係話","in other words"],
+  ["其實","actually"],
+  ["不過","but / however"],
+  ["所以","so / therefore"],
+  ["因為","because"],
+  ["或者","maybe / or"],
+  ["一定","definitely"],
+  ["應該","should / probably"],
+  ["可能","possibly"],
+  ["大概","roughly / approximately"],
+  ["差唔多","almost / about the same"],
+  ["好似","seems like / like"],
+  ["係咪","right? / is it?"],
+  ["係唔係","is it or isn't it? (yes/no question)"],
+  ["有冇","is there? / do you have? (yes/no)"],
+  ["得唔得","is that OK? / will that work?"],
+  ["唔得","not OK / not allowed / doesn't work"],
+  ["都得","either is fine"],
+  ["求其","whatever / any way you like"],
+  ["是但","whatever, anything's fine"],
+  ["冇所謂","doesn't matter / no preference"],
+  ["冇事","it's nothing / all fine"],
+  ["唔知","don't know"],
+  ["唔明","don't understand"],
+  ["明白","understand"],
+  ["明唔明","do you understand?"],
+  ["聽唔到","can't hear"],
+  ["講多次","say that again"],
+  ["大聲啲","louder"],
+  ["慢慢講","speak slowly"],
+  ["攪掂","done, sorted (variant spelling)"],
+  ["搞錯","mistake / mix-up"],
+  ["等陣","wait a moment"],
+  ["一陣","in a moment"],
+  ["陣間","in a little while"],
+  ["遲啲","later"],
+  ["快啲","hurry / quicker"],
+  ["慢慢嚟","take it slowly"],
+  ["收工","finish work / call it a day"],
+  ["返工","go to work"],
+  ["放工","get off work"]
+]
+  .map((e) => (e.length === 2 ? [e[0], null, e[1]] : e))
+  .sort((a, b) => b[0].length - a[0].length);
 
 /* ------------------------------------------------------------------ *
  * Jyutping — CanCLID/to-jyutping (BSD-2-Clause), vendored so it keeps
@@ -398,16 +506,22 @@ function looksMandarin(zh) {
   return canto === 0 && manda >= 2;
 }
 
+/** Jyutping for a glossary term, regardless of the display toggle. */
+function jyutOf(term) {
+  if (!jyut) return "";
+  try { return jyut.getJyutpingText(term) || ""; } catch (_) { return ""; }
+}
+
 function scanGlossary(zh) {
   const hits = [];
   const used = [];
-  for (const [term, jyut, gloss] of GLOSSARY) {
+  for (const [term, hand, gloss] of GLOSSARY) {
     const at = zh.indexOf(term);
     if (at < 0) continue;
     // skip a term already covered by a longer match at the same place
     if (used.some(([s, e]) => at >= s && at < e)) continue;
     used.push([at, at + term.length]);
-    hits.push({ term, jyut, gloss });
+    hits.push({ term, jyut: hand || jyutOf(term), gloss });
     if (hits.length >= 4) break;
   }
   return hits;
@@ -597,21 +711,47 @@ async function translateOnline(text) {
   return out;
 }
 
+/**
+ * Google Translate's public web endpoint, with Cantonese as the declared
+ * source. Measured on raw written Cantonese it gets the fixed phrases and
+ * particles right that MyMemory inverts — it does not need normalising.
+ * Unofficial and undocumented, so it is one link in a chain, not the chain.
+ */
+async function translateGoogle(text) {
+  const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=yue&tl=en&dt=t&q="
+            + encodeURIComponent(text.slice(0, 1500));
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("http " + r.status);
+  const j = await r.json();
+  const out = Array.isArray(j) && Array.isArray(j[0])
+    ? j[0].map((s) => (s && s[0]) || "").join("").trim() : "";
+  if (!out) throw new Error("empty");
+  return out;
+}
+
+let lastVia = "";
+
 async function translate(text) {
-  // Engines see standard written Chinese; the screen keeps the real Cantonese.
-  const src = normalise(text);
   if (engine.instance) {
     // Bounded: one wedged call must not stall every line behind it.
-    const out = await withTimeout(engine.instance.translate(src), 12000, null);
-    if (out) return { text: out, via: "on-device" };
+    const out = await withTimeout(engine.instance.translate(normalise(text)), 12000, null);
+    if (out) { lastVia = "on-device"; return { text: out, via: "on-device" }; }
   }
-  if (state.fallback) {
-    const out = await withTimeout(translateOnline(src), 10000, null);
-    if (out) return { text: out, via: "online" };
-    throw new Error("failed");
-  }
-  throw new Error("no-engine");
+  if (!state.fallback) throw new Error("no-engine");
+  // Google reads written Cantonese natively: send it exactly as spoken.
+  const g = await withTimeout(translateGoogle(text), 10000, null);
+  if (g) { lastVia = "google"; return { text: g, via: "google" }; }
+  // MyMemory reads it as standard Chinese, so it gets the normalised form.
+  const m = await withTimeout(translateOnline(normalise(text)), 10000, null);
+  if (m) { lastVia = "mymemory"; return { text: m, via: "mymemory" }; }
+  throw new Error("failed");
 }
+
+const ONLINE_CONSENT =
+  "To show English, each recognised line of Chinese text is sent to Google "
+  + "Translate's public web endpoint (and to MyMemory if that fails). Only the "
+  + "text is sent — never audio. Both are free.\n\n"
+  + "On a phone this is the only way to get English. Allow it?";
 
 /**
  * The banner is the app's honest answer to "why is there no English?".
@@ -638,12 +778,9 @@ function updateBanner() {
 }
 
 $("bannerBtn").onclick = () => {
-  const ok = confirm(
-    "Online translation sends the recognised Chinese text to MyMemory, a free public "
-    + "translation service. Only that text is sent — no audio, and nothing else.\n\n"
-    + "Turn it on?");
-  if (!ok) return;
+  if (!confirm(ONLINE_CONSENT)) return;
   state.fallback = true;
+  state.onlineDeclined = false;
   $("fallback").checked = true;
   save();
   updateBanner();
@@ -657,22 +794,34 @@ function retryFailed() {
   }
 }
 
-/* Serialise translation so lines land in the order they were spoken. */
-let chain = Promise.resolve();
+/*
+ * A small pool rather than a serial chain. Each line renders into its own
+ * node, so order on screen never depends on completion order — and on a
+ * weak signal one slow request must not hold every line behind it.
+ */
+const POOL = 3;
+let inFlight = 0;
+const queue = [];
+
 function enqueueTranslation(entry) {
-  chain = chain.then(async () => {
-    try {
-      const { text } = await translate(entry.zh);
-      entry.en = text; entry.status = "ok";
-    } catch (_) {
-      entry.en = engine.instance || state.fallback
-        ? "Translation failed for this line."
-        : "— translation off —";
-      entry.status = "failed";
-    }
-    renderEntry(entry);
-    save();
-  });
+  queue.push(entry);
+  pump();
+}
+
+function pump() {
+  while (inFlight < POOL && queue.length) {
+    const entry = queue.shift();
+    inFlight++;
+    translate(entry.zh)
+      .then(({ text, via }) => { entry.en = text; entry.status = "ok"; entry.via = via; })
+      .catch(() => {
+        entry.en = engine.instance || state.fallback
+          ? "Translation failed for this line."
+          : "— translation off —";
+        entry.status = "failed";
+      })
+      .finally(() => { inFlight--; renderEntry(entry); save(); pump(); });
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -921,6 +1070,14 @@ function buildRecogniser() {
 async function start() {
   if (!SR) return;
   if (fatal) { alert(fatal); return; }
+  // Ask about online translation once, at the moment it matters. A "no"
+  // is remembered; the banner stays as the way to change your mind.
+  if (!engine.instance && !state.fallback && !state.onlineDeclined) {
+    if (confirm(ONLINE_CONSENT)) { state.fallback = true; $("fallback").checked = true; }
+    else state.onlineDeclined = true;
+    save();
+    updateBanner();
+  }
   wantRunning = true;
   pendingInterim = "";
   $("mic").classList.add("on");
@@ -1071,6 +1228,10 @@ async function runDiagnostics() {
   }
   rows.push(`<b>Loaded model</b> · ${engine.instance ? yn(true, "ready") : yn("warn", "", "", "not prepared yet")}`);
   rows.push(`<b>Online fallback</b> · ${state.fallback ? yn("warn", "", "", "on") : yn(true, "off")}`);
+  rows.push(`<b>Translation route</b> · ${
+    engine.instance ? yn(true, "on-device")
+    : state.fallback ? yn(true, "online: Google Translate → MyMemory" + (lastVia ? ` (last used: ${lastVia})` : ""))
+    : yn("warn", "", "", "off — tap Start, or the banner")}`);
   rows.push(`<b>Jyutping</b> · ${yn(!!jyut, "loaded (offline)", "failed to load")}`);
   rows.push(`<b>Context notes</b> · ${yn(!!languageModelAPI(), "available", "not on this device")}`);
   rows.push(`<b>Keep screen awake</b> · ${yn(!!navigator.wakeLock, "supported", "not supported")}`);
@@ -1094,6 +1255,15 @@ async function runDiagnostics() {
     $("mic").textContent = "Needs an https:// address";
   } else {
     setStatus("Idle");
+  }
+
+  // Desktop-only features stay out of the way on a phone.
+  $("offlineRow").hidden = !translatorAPI();
+  $("ctxRow").hidden = !languageModelAPI();
+
+  // Cache the shell so the app opens with no signal.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(() => { /* still works uncached */ });
   }
 
   updateBanner();
