@@ -461,11 +461,19 @@ const NORMALISE = [
   [/呢個/g, "這個"], [/呢啲/g, "這些"], [/呢度/g, "這裡"], [/呢排/g, "最近"],
   [/嗰個/g, "那個"], [/嗰啲/g, "那些"], [/嗰度/g, "那裡"],
   [/而家/g, "現在"], [/聽日/g, "明天"], [/尋日/g, "昨天"], [/琴日/g, "昨天"],
-  [/禮拜/g, "星期"], [/搞掂/g, "完成"], [/傾偈/g, "聊天"],
+  [/禮拜/g, "星期"],
+  // 佢 stands for things as well as people, so "搞掂佢" is "get it done" —
+  // left to the generic 佢 -> 他 rule it came back as "finish him off".
+  [/搞掂佢/g, "把它辦妥"], [/搞掂/g, "完成"],
+  [/佢話/g, "他說"], [/我話/g, "我說"], [/你話/g, "你說"],
+  [/睇下/g, "看看"], [/睇/g, "看"],
+  // bare 傾 is "discuss"; as standard Chinese it reads as "pour", so
+  // "再傾" came back as "we'll pour them". Spare the compounds.
+  [/傾偈/g, "聊天"], [/傾(?!向|斜|盆|家)/g, "談"],
   [/老細/g, "老闆"], [/埋單/g, "買單"],
   // then single characters
   [/嘅/g, "的"], [/哋/g, "們"], [/佢/g, "他"], [/係/g, "是"],
-  [/睇/g, "看"], [/喺/g, "在"], [/嚟/g, "來"], [/咗/g, "了"],
+  [/喺/g, "在"], [/嚟/g, "來"], [/咗/g, "了"],
   [/畀/g, "給"], [/攞/g, "拿"], [/嘢/g, "東西"], [/啲/g, "些"],
   [/乜/g, "什麼"], [/咁/g, "這麼"], [/唔/g, "不"],
   // sentence-final particles carry tone, not meaning — drop them
